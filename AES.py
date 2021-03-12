@@ -161,7 +161,31 @@ class AES:
         return cipher_text.strip()
 
     def decrypt(self, cipher_text: str) -> str:
-        return ""
+        cipher_state_matrix = np.array(
+            cipher_text.split(" ")
+        ).reshape((4, 4), order='F')
+        # Round 0-9
+        for round_no in range(0, 10):
+            # Add Round Key
+            self.add_round_key(10 - round_no, cipher_state_matrix)
+            # Mix Column (For round 1-9)
+            if round_no != 0:
+                cipher_state_matrix = matrix4x4_gf_multiplication(AES.INV_MIXER, cipher_state_matrix)
+            # Shift Row
+            for i in range(1, 4):
+                cipher_state_matrix[i, :] = np.roll(cipher_state_matrix[i, :], i)
+            # Substitution
+            for i in range(4):
+                for j in range(4):
+                    cipher_state_matrix[i][j] = inv_s_box_substitution(cipher_state_matrix[i][j])
+        # Round 10
+        self.add_round_key(0, cipher_state_matrix)
+
+        plain_text = ""
+        for col in range(4):
+            for row in range(4):
+                plain_text += chr(int(cipher_state_matrix[row][col], 16))
+        return plain_text
 
 
 if __name__ == '__main__':
