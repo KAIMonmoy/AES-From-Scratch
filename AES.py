@@ -18,6 +18,28 @@ def s_box_substitution(hex_str: str):
     return hex(AES.S_BOX[idx])
 
 
+def inv_s_box_substitution(hex_str: str):
+    if int(hex_str, 16) < 16:
+        idx = int(hex_str, 16)
+    else:
+        idx = int(hex_str[-2], 16) * 16 + int(hex_str[-1], 16)
+    return hex(AES.INV_S_BOX[idx])
+
+
+def matrix4x4_gf_multiplication(mat_a_bs, mat_b_hex):
+    output = mat_b_hex.copy()
+    for i in range(4):
+        for j in range(4):
+            row = mat_a_bs[i]
+            col = mat_b_hex[:, j]
+            temp_val = 0
+            for k in range(4):
+                temp_val ^= row[k].gf_multiply_modular(BitVector(hexstring=col[k][2:]),
+                                                       BitVector(bitstring='100011011'), 8).int_val()
+            output[i][j] = hex(temp_val)
+    return output
+
+
 class AES:
     S_BOX = (
         0x63, 0x7C, 0x77, 0x7B, 0xF2, 0x6B, 0x6F, 0xC5, 0x30, 0x01, 0x67, 0x2B, 0xFE, 0xD7, 0xAB, 0x76,
@@ -102,11 +124,44 @@ class AES:
                                                                                     temp_round_key[row_no, col_no])
         return temp_round_key
 
-    def encrypt(self, plain_text) -> str:
-        return ""
+    def add_round_key(self, round_key_no: int, state_matrix):
+        for i in range(4):
+            for j in range(4):
+                state_matrix[i][j] = xor_hex_string_with_xor_hex_string(
+                    state_matrix[i][j], self.round_key[round_key_no][i][j]
+                )
 
-    def decrypt(self, cypher_text):
-        pass
+    def encrypt(self, plain_text: str) -> str:
+        updated_plain_text = plain_text[:16] if len(plain_text) > 16 else plain_text + ' ' * (16 - len(plain_text))
+        state_matrix = np.array([
+            hex(ord(char)) for char in updated_plain_text
+        ]).reshape((4, 4), order='F')
+
+        # Round 0
+        self.add_round_key(0, state_matrix)
+        # Round 1-10
+        for round_no in range(1, 11):
+            # Substitution
+            for i in range(4):
+                for j in range(4):
+                    state_matrix[i][j] = s_box_substitution(state_matrix[i][j])
+            # Shift Row
+            for i in range(1, 4):
+                state_matrix[i, :] = np.roll(state_matrix[i, :], -i)
+            # Mix Column (For round 1-9)
+            if round_no != 10:
+                state_matrix = matrix4x4_gf_multiplication(AES.MIXER, state_matrix)
+            # Add Round Key
+            self.add_round_key(round_no, state_matrix)
+
+        cipher_text = ""
+        for col in range(4):
+            for row in range(4):
+                cipher_text += (state_matrix[row][col] + ' ')
+        return cipher_text.strip()
+
+    def decrypt(self, cipher_text: str) -> str:
+        return ""
 
 
 if __name__ == '__main__':
@@ -114,3 +169,4 @@ if __name__ == '__main__':
     aes = AES(x)
     pt = "Two One Nine Two"
     ct = aes.encrypt(pt)
+    dpt = aes.decrypt(ct)
