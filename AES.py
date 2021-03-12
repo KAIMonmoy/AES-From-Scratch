@@ -1,5 +1,21 @@
 import numpy as np
-import BitVector
+from BitVector import BitVector
+
+
+def xor_hex_string_with_int(a: str, b: int):
+    return hex(int(a, 16) ^ b)
+
+
+def xor_hex_string_with_xor_hex_string(a: str, b: str):
+    return hex(int(a, 16) ^ int(b, 16))
+
+
+def s_box_substitution(hex_str: str):
+    if int(hex_str, 16) < 16:
+        idx = int(hex_str, 16)
+    else:
+        idx = int(hex_str[-2], 16) * 16 + int(hex_str[-1], 16)
+    return hex(AES.S_BOX[idx])
 
 
 class AES:
@@ -55,7 +71,7 @@ class AES:
         [BitVector(hexstring="0B"), BitVector(hexstring="0D"), BitVector(hexstring="09"), BitVector(hexstring="0E")]
     ]
 
-    ROUND_CONST = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x32]
+    ROUND_CONST = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
 
     def __init__(self, key: str) -> None:
         super().__init__()
@@ -64,8 +80,8 @@ class AES:
         self.round_key.append(np.array([
             hex(ord(char)) for char in key
         ]).reshape((4, 4), order='F'))
-
-
+        for round_no in range(10):
+            self.round_key.append(self.generate_round_key(round_no))
 
     def generate_round_key(self, round_no: int):
         temp_round_key = self.round_key[round_no].copy()
@@ -74,21 +90,27 @@ class AES:
         temp_round_sub_key = np.roll(temp_round_sub_key, -1)
         # substitution
         for i in range(len(temp_round_sub_key)):
-            if int(temp_round_sub_key[i], 16) < 16:
-                idx = int(temp_round_sub_key[i], 16)
-            else:
-                idx = int(temp_round_sub_key[i][-2], 16) * 16 + int(temp_round_sub_key[i][-1], 16)
-            temp_round_sub_key[i] = AES.
+            temp_round_sub_key[i] = s_box_substitution(temp_round_sub_key[i])
         # add round constant
+        temp_round_sub_key[0] = xor_hex_string_with_int(temp_round_sub_key[0], AES.ROUND_CONST[round_no])
 
+        for i in range(4):
+            temp_round_key[i, 0] = xor_hex_string_with_xor_hex_string(temp_round_key[i, 0], temp_round_sub_key[i])
+        for col_no in range(1, 4):
+            for row_no in range(4):
+                temp_round_key[row_no, col_no] = xor_hex_string_with_xor_hex_string(temp_round_key[row_no, col_no - 1],
+                                                                                    temp_round_key[row_no, col_no])
+        return temp_round_key
 
-    def encrypt(self, plaintext):
-        pass
+    def encrypt(self, plain_text) -> str:
+        return ""
 
-    def decrypt(self, cyphertext):
+    def decrypt(self, cypher_text):
         pass
 
 
 if __name__ == '__main__':
-    x = 'TEAMSCORPIAN1234'
-    AES(x)
+    x = 'Thats my Kung Fu'
+    aes = AES(x)
+    pt = "Two One Nine Two"
+    ct = aes.encrypt(pt)
