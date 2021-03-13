@@ -1,5 +1,6 @@
 import numpy as np
 from BitVector import BitVector
+from time import time
 
 
 def xor_hex_string_with_int(a: str, b: int):
@@ -63,15 +64,14 @@ def matrix4x4_gf_multiplication(mat_a_bs, mat_b_hex):
             row = mat_a_bs[i]
             col = mat_b_hex[:, j]
             temp_val = 0
-            for k in range(4):
-                temp_val ^= row[k].gf_multiply_modular(BitVector(hexstring=col[k][2:]),
-                                                       BitVector(bitstring='100011011'), 8).int_val()
+            for idx in range(4):
+                temp_val ^= row[idx].gf_multiply_modular(BitVector(hexstring=col[idx][2:]),
+                                                         BitVector(bitstring='100011011'), 8).int_val()
             output[i][j] = hex(temp_val)
     return output
 
 
 class AES:
-
     MIXER = [
         [BitVector(hexstring="02"), BitVector(hexstring="03"), BitVector(hexstring="01"), BitVector(hexstring="01")],
         [BitVector(hexstring="01"), BitVector(hexstring="02"), BitVector(hexstring="03"), BitVector(hexstring="01")],
@@ -88,15 +88,20 @@ class AES:
 
     ROUND_CONST = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1B, 0x36]
 
-    def __init__(self, key: str) -> None:
+    def __init__(self, key: str, verbose: bool = True) -> None:
         super().__init__()
         self.key_plaintext = key[:16] if len(key) > 16 else key + '0' * (16 - len(key))
+        self.verbose = verbose
+        tic = time()
         self.round_key = []
         self.round_key.append(np.array([
-            hex(ord(char)) for char in key
+            hex(ord(char)) for char in self.key_plaintext
         ]).reshape((4, 4), order='F'))
         for round_no in range(10):
             self.round_key.append(self.generate_round_key(round_no))
+        toc = time()
+        if self.verbose:
+            print('Round Key Generation Time: ', toc - tic)
 
     def generate_round_key(self, round_no: int):
         temp_round_key = self.round_key[round_no].copy()
@@ -124,11 +129,17 @@ class AES:
                     state_matrix[i][j], self.round_key[round_key_no][i][j]
                 )
 
-    def encrypt(self, plain_text: str) -> str:
-        updated_plain_text = plain_text[:16] if len(plain_text) > 16 else plain_text + ' ' * (16 - len(plain_text))
-        state_matrix = np.array([
-            hex(ord(char)) for char in updated_plain_text
-        ]).reshape((4, 4), order='F')
+    def encrypt(self, plain_text: str, inp_type: str = 'str') -> str:
+        tic = time()
+        if inp_type == 'str':
+            updated_plain_text = plain_text[:16] if len(plain_text) > 16 else plain_text + ' ' * (16 - len(plain_text))
+            state_matrix = np.array([
+                hex(ord(char)) for char in updated_plain_text
+            ]).reshape((4, 4), order='F')
+        else:
+            state_matrix = np.array([
+                hex(int(char, 16)) for char in plain_text.split(' ')
+            ]).reshape((4, 4), order='F')
 
         # Round 0
         self.add_round_key(0, state_matrix)
@@ -150,13 +161,18 @@ class AES:
         cipher_text = ""
         for col in range(4):
             for row in range(4):
-                cipher_text += (state_matrix[row][col] + ' ')
+                cipher_text += (state_matrix[row][col][2:] + ' ')
+        toc = time()
+        if self.verbose:
+            print('Encryption Time: ', toc - tic)
         return cipher_text.strip()
 
-    def decrypt(self, cipher_text: str) -> str:
-        cipher_state_matrix = np.array(
-            cipher_text.split(" ")
-        ).reshape((4, 4), order='F')
+    def decrypt(self, cipher_text: str, inp_type: str = 'str') -> str:
+        tic = time()
+        cipher_text_arr = [hex(int(chr_grp, 16)) for chr_grp in cipher_text.split(' ')]
+        if len(cipher_text_arr) != 16:
+            raise Exception('Invalid Cipher Text! Expected Cipher Text Format is Space-separated Hex Values!')
+        cipher_state_matrix = np.array(cipher_text_arr).reshape((4, 4), order='F')
         # Round 0-9
         for round_no in range(0, 10):
             # Add Round Key
@@ -177,15 +193,36 @@ class AES:
         plain_text = ""
         for col in range(4):
             for row in range(4):
-                plain_text += chr(int(cipher_state_matrix[row][col], 16))
+                if inp_type == 'str':
+                    plain_text += chr(int(cipher_state_matrix[row][col], 16))
+                else:
+                    plain_text += cipher_state_matrix[row][col][2:]
+        toc = time()
+        if self.verbose:
+            print('Decryption Time: ', toc - tic)
         return plain_text
 
 
 if __name__ == '__main__':
-    x = 'Thats my Kung Fu'
-    aes = AES(x)
+    print('----- Demonstration -----')
+    k = 'Thats my Kung Fu'
+    print('Key:', k)
+    aes = AES(k)
     pt = "Two One Nine Two"
-    ct = aes.encrypt(pt)
+    print('Plain Text:', pt)
+    ct = aes.encrypt(pt, 'str')
+    print('Encrypted Text:', ct)
     dpt = aes.decrypt(ct)
-    print(dpt)
-    print(pt == dpt)
+    print('Decrypted Text:', dpt)
+    print()
+    print('---- Interactive Mode ---')
+    while True:
+        k = input('Enter key (\'q\' to exit): ')
+        if k.lower() == 'q':
+            break
+        aes = AES(k)
+        pt = input('Enter Plain Text: ')
+        ct = aes.encrypt(pt, 'str')
+        print('Encrypted Text:', ct)
+        dpt = aes.decrypt(ct)
+        print('Decrypted Text:', dpt)
